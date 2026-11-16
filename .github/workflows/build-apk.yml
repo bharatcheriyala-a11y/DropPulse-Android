@@ -4,6 +4,7 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -14,12 +15,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup & Build Android APK
+      - name: Setup & Build Android APK with Custom Icon
         run: |
           npm init -y
-          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 sharp
           mkdir -p www
-          if [ -f index.html ]; then cp index.html www/index.html; else echo "<h1>DropPulse PRO</h1>" > www/index.html; fi
+          cp index.html www/index.html
 
           cat << 'EOF' > capacitor.config.json
           {
@@ -28,18 +29,65 @@ jobs:
             "webDir": "www",
             "server": {
               "androidScheme": "https"
+            },
+            "plugins": {
+              "SplashScreen": {
+                "launchShowDuration": 0
+              }
             }
           }
           EOF
 
-          npx cap add android
+          yes | npx cap add android
+
+          # Generate 512x512 DropPulse PRO Icon & Inject into All Android Mipmap Folders
+          cat << 'EOF' > make-icon.js
+          const sharp = require('sharp');
+          const fs = require('fs');
+          const svg = `<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#0B132B"/>
+                <stop offset="100%" stop-color="#1E1B4B"/>
+              </linearGradient>
+              <linearGradient id="ar" x1="180" y1="120" x2="400" y2="390" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#38BDF8"/>
+                <stop offset="100%" stop-color="#A855F7"/>
+              </linearGradient>
+            </defs>
+            <rect width="512" height="512" fill="url(#bg)"/>
+            <circle cx="165" cy="256" r="52" fill="#38BDF8"/>
+            <path d="M210 228L315 142L298 115L402 138L368 232L350 205L232 258Z" fill="url(#ar)"/>
+            <path d="M210 284L315 370L298 397L402 374L368 280L350 307L232 254Z" fill="url(#ar)"/>
+            <path d="M245 256H315L334 210L360 302L384 228L404 256H458" stroke="#7DD3FC" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>`;
+
+          (async () => {
+            const sizes = {
+              'mipmap-mdpi': 48,
+              'mipmap-hdpi': 72,
+              'mipmap-xhdpi': 96,
+              'mipmap-xxhdpi': 144,
+              'mipmap-xxxhdpi': 192
+            };
+            for (const [folder, size] of Object.entries(sizes)) {
+              const dir = `android/app/src/main/res/${folder}`;
+              if (fs.existsSync(dir)) {
+                await sharp(Buffer.from(svg)).resize(size, size).png().toFile(`${dir}/ic_launcher.png`);
+                await sharp(Buffer.from(svg)).resize(size, size).png().toFile(`${dir}/ic_launcher_round.png`);
+                await sharp(Buffer.from(svg)).resize(size, size).png().toFile(`${dir}/ic_launcher_foreground.png`);
+              }
+            }
+          })();
+          EOF
+          node make-icon.js
 
           # Add Camera, Storage & Network Permissions
           sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" \/>\n    <application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload Official APK
         uses: actions/upload-artifact@v4
