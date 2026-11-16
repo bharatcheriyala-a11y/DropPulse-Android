@@ -83,88 +83,72 @@ jobs:
           EOF
           node make-icon.js
 
-          # 2. Add ZXing Core for 100% Offline QR Generation in Java
-          sed -i 's/dependencies {/dependencies {\n    implementation "com.google.zxing:core:3.5.3"/' android/app/build.gradle
+          # 2. Add NanoHTTPD (Android Local Server) & ZXing Core (Offline QR)
+          sed -i 's/dependencies {/dependencies {\n    implementation "org.nanohttpd:nanohttpd:2.3.1"\n    implementation "com.google.zxing:core:3.5.3"/' android/app/build.gradle
 
-          # 3. Create Built-in High-Speed Local HTTP File Server (LocalDropServer.java)
+          # 3. Create Android-Native High-Speed Local HTTP Server (LocalDropServer.java)
           PKG_DIR=$(dirname $(find android/app/src/main/java -name "MainActivity.java"))
           cat << 'EOF' > "$PKG_DIR/LocalDropServer.java"
           package com.droppulse.proshare;
 
           import android.content.Context;
           import android.os.Environment;
-          import com.sun.net.httpserver.HttpExchange;
-          import com.sun.net.httpserver.HttpServer;
+          import fi.iki.elonen.NanoHTTPD;
           import java.io.*;
           import java.net.*;
-          import java.nio.charset.StandardCharsets;
           import java.util.*;
-          import java.util.concurrent.Executors;
 
-          public class LocalDropServer {
-              private HttpServer server;
+          public class LocalDropServer extends NanoHTTPD {
               private final Context context;
               private final File shareDir;
               public static final int PORT = 8080;
 
               public LocalDropServer(Context ctx) {
+                  super("0.0.0.0", PORT);
                   this.context = ctx;
                   File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                   this.shareDir = new File(downloads, "DropPulse");
                   if (!this.shareDir.exists()) this.shareDir.mkdirs();
               }
 
-              public void start() {
+              @Override
+              public Response serve(IHTTPSession session) {
+                  String uri = session.getUri();
+                  Method method = session.getMethod();
+
+                  if (Method.OPTIONS.equals(method)) {
+                      return withCors(newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", ""));
+                  }
+
                   try {
-                      server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 50);
-                      server.setExecutor(Executors.newCachedThreadPool());
+                      // 1. Upload endpoint (streams directly to Phone Downloads/DropPulse)
+                      if ("/upload".equals(uri) && Method.POST.equals(method)) {
+                          Map<String, String> params = session.getParms();
+                          String rawName = params.get("name");
+                          if (rawName == null || rawName.isEmpty()) rawName = "file_" + System.currentTimeMillis();
+                          String safeName = rawName.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
+                          File outFile = new File(shareDir, safeName);
 
-                      // Serve index.html to Laptop / 2nd Phone
-                      server.createContext("/", exchange -> {
-                          addCors(exchange);
-                          if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                              exchange.sendResponseHeaders(204, -1);
-                              return;
-                          }
-                          try (InputStream is = context.getAssets().open("public/index.html")) {
-                              byte[] html = readAll(is);
-                              exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
-                              exchange.sendResponseHeaders(200, html.length);
-                              try (OutputStream os = exchange.getResponseBody()) { os.write(html); }
-                          }
-                      });
+                          String contentLengthHeader = session.getHeaders().get("content-length");
+                          long contentLength = contentLengthHeader != null ? Long.parseLong(contentLengthHeader) : -1;
+                          InputStream is = session.getInputStream();
 
-                      // Direct High-Speed Streaming Upload -> Saves directly to Phone Downloads/DropPulse!
-                      server.createContext("/upload", exchange -> {
-                          addCors(exchange);
-                          if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                              exchange.sendResponseHeaders(204, -1);
-                              return;
-                          }
-                          String query = exchange.getRequestURI().getRawQuery();
-                          String fileName = "file_" + System.currentTimeMillis();
-                          if (query != null && query.startsWith("name=")) {
-                              fileName = URLDecoder.decode(query.substring(5), "UTF-8");
-                          }
-                          fileName = fileName.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
-                          File outFile = new File(shareDir, fileName);
-                          try (InputStream is = exchange.getRequestBody();
-                               FileOutputStream fos = new FileOutputStream(outFile)) {
+                          try (FileOutputStream fos = new FileOutputStream(outFile)) {
                               byte[] buf = new byte[65536];
-                              int len;
-                              while ((len = is.read(buf)) != -1) {
-                                  fos.write(buf, 0, len);
+                              long remaining = contentLength;
+                              while (remaining != 0) {
+                                  int toRead = remaining > 0 ? (int) Math.min(buf.length, remaining) : buf.length;
+                                  int read = is.read(buf, 0, toRead);
+                                  if (read <= 0) break;
+                                  fos.write(buf, 0, read);
+                                  if (remaining > 0) remaining -= read;
                               }
                           }
-                          byte[] resp = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
-                          exchange.getResponseHeaders().set("Content-Type", "application/json");
-                          exchange.sendResponseHeaders(200, resp.length);
-                          try (OutputStream os = exchange.getResponseBody()) { os.write(resp); }
-                      });
+                          return withCors(newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true}"));
+                      }
 
-                      // List Shared Files
-                      server.createContext("/list", exchange -> {
-                          addCors(exchange);
+                      // 2. List shared files
+                      if ("/list".equals(uri)) {
                           File[] files = shareDir.listFiles();
                           StringBuilder json = new StringBuilder("[");
                           if (files != null) {
@@ -179,42 +163,39 @@ jobs:
                               }
                           }
                           json.append("]");
-                          byte[] resp = json.toString().getBytes(StandardCharsets.UTF_8);
-                          exchange.getResponseHeaders().set("Content-Type", "application/json");
-                          exchange.sendResponseHeaders(200, resp.length);
-                          try (OutputStream os = exchange.getResponseBody()) { os.write(resp); }
-                      });
+                          return withCors(newFixedLengthResponse(Response.Status.OK, "application/json", json.toString()));
+                      }
 
-                      // Stream File Download / Video Playback
-                      server.createContext("/files/", exchange -> {
-                          addCors(exchange);
-                          String rawPath = exchange.getRequestURI().getRawPath();
-                          String name = URLDecoder.decode(rawPath.substring("/files/".length()), "UTF-8");
+                      // 3. Download / Stream file
+                      if (uri.startsWith("/files/")) {
+                          String name = URLDecoder.decode(uri.substring("/files/".length()), "UTF-8");
                           File target = new File(shareDir, name);
                           if (!target.exists()) {
-                              exchange.sendResponseHeaders(404, -1);
-                              return;
+                              return withCors(newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found"));
                           }
-                          String query = exchange.getRequestURI().getRawQuery();
-                          if (query != null && query.contains("download=1")) {
-                              exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + target.getName() + "\"");
+                          FileInputStream fis = new FileInputStream(target);
+                          Response res = newFixedLengthResponse(Response.Status.OK, guessMime(target.getName()), fis, target.length());
+                          Map<String, String> params = session.getParms();
+                          if ("1".equals(params.get("download"))) {
+                              res.addHeader("Content-Disposition", "attachment; filename=\"" + target.getName() + "\"");
                           }
-                          exchange.getResponseHeaders().set("Content-Type", guessMime(target.getName()));
-                          exchange.sendResponseHeaders(200, target.length());
-                          try (FileInputStream fis = new FileInputStream(target);
-                               OutputStream os = exchange.getResponseBody()) {
-                              byte[] buf = new byte[65536];
-                              int len;
-                              while ((len = fis.read(buf)) != -1) {
-                                  os.write(buf, 0, len);
-                              }
-                          }
-                      });
+                          return withCors(res);
+                      }
 
-                      server.start();
+                      // 4. Serve Web App UI to Laptop / 2nd Phone
+                      InputStream htmlStream = context.getAssets().open("public/index.html");
+                      return withCors(newChunkedResponse(Response.Status.OK, "text/html; charset=UTF-8", htmlStream));
+
                   } catch (Exception e) {
-                      e.printStackTrace();
+                      return withCors(newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", e.getMessage()));
                   }
+              }
+
+              private Response withCors(Response res) {
+                  res.addHeader("Access-Control-Allow-Origin", "*");
+                  res.addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                  res.addHeader("Access-Control-Allow-Headers", "*");
+                  return res;
               }
 
               public String getLocalIpUrl() {
@@ -239,20 +220,6 @@ jobs:
                   return "http://192.168.43.1:" + PORT;
               }
 
-              private void addCors(HttpExchange ex) {
-                  ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-                  ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                  ex.getResponseHeaders().set("Access-Control-Allow-Headers", "*");
-              }
-
-              private byte[] readAll(InputStream is) throws IOException {
-                  ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                  byte[] buf = new byte[8192];
-                  int n;
-                  while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
-                  return bos.toByteArray();
-              }
-
               private String guessMime(String name) {
                   String lower = name.toLowerCase();
                   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
@@ -265,7 +232,7 @@ jobs:
           }
           EOF
 
-          # 4. Update MainActivity.java to start LocalDropServer, provide Offline QR SVG & Grant Camera
+          # 4. Update MainActivity.java
           cat << 'EOF' > "$PKG_DIR/MainActivity.java"
           package com.droppulse.proshare;
 
@@ -289,7 +256,11 @@ jobs:
               public void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   dropServer = new LocalDropServer(this);
-                  dropServer.start();
+                  try {
+                      dropServer.start();
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                  }
 
                   if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                       ActivityCompat.requestPermissions(this, new String[]{
