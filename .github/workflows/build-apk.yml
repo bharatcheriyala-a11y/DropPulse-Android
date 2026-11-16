@@ -1,4 +1,4 @@
-name: Build DropPulse Pro APK
+name: Build DropPulse Pro Offline APK
 on: [push]
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup & Build Android APK with Custom Icon
+      - name: Build Native Offline P2P Android APK
         run: |
           npm init -y
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 sharp
@@ -28,7 +28,8 @@ jobs:
             "appName": "DropPulse PRO",
             "webDir": "www",
             "server": {
-              "androidScheme": "https"
+              "androidScheme": "http",
+              "cleartext": true
             },
             "plugins": {
               "SplashScreen": {
@@ -40,7 +41,7 @@ jobs:
 
           yes | npx cap add android
 
-          # Generate 512x512 DropPulse PRO Icon & Inject into All Android Mipmap Folders
+          # 1. Generate 512x512 Custom DropPulse PRO Launcher Icon
           cat << 'EOF' > make-icon.js
           const sharp = require('sharp');
           const fs = require('fs');
@@ -82,8 +83,266 @@ jobs:
           EOF
           node make-icon.js
 
-          # Add Camera, Storage & Network Permissions
-          sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" \/>\n    <application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+          # 2. Add ZXing Core for 100% Offline QR Generation in Java
+          sed -i 's/dependencies {/dependencies {\n    implementation "com.google.zxing:core:3.5.3"/' android/app/build.gradle
+
+          # 3. Create Built-in High-Speed Local HTTP File Server (LocalDropServer.java)
+          PKG_DIR=$(dirname $(find android/app/src/main/java -name "MainActivity.java"))
+          cat << 'EOF' > "$PKG_DIR/LocalDropServer.java"
+          package com.droppulse.proshare;
+
+          import android.content.Context;
+          import android.os.Environment;
+          import com.sun.net.httpserver.HttpExchange;
+          import com.sun.net.httpserver.HttpServer;
+          import java.io.*;
+          import java.net.*;
+          import java.nio.charset.StandardCharsets;
+          import java.util.*;
+          import java.util.concurrent.Executors;
+
+          public class LocalDropServer {
+              private HttpServer server;
+              private final Context context;
+              private final File shareDir;
+              public static final int PORT = 8080;
+
+              public LocalDropServer(Context ctx) {
+                  this.context = ctx;
+                  File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                  this.shareDir = new File(downloads, "DropPulse");
+                  if (!this.shareDir.exists()) this.shareDir.mkdirs();
+              }
+
+              public void start() {
+                  try {
+                      server = HttpServer.create(new InetSocketAddress("0.0.0.0", PORT), 50);
+                      server.setExecutor(Executors.newCachedThreadPool());
+
+                      // Serve index.html to Laptop / 2nd Phone
+                      server.createContext("/", exchange -> {
+                          addCors(exchange);
+                          if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                              exchange.sendResponseHeaders(204, -1);
+                              return;
+                          }
+                          try (InputStream is = context.getAssets().open("public/index.html")) {
+                              byte[] html = readAll(is);
+                              exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+                              exchange.sendResponseHeaders(200, html.length);
+                              try (OutputStream os = exchange.getResponseBody()) { os.write(html); }
+                          }
+                      });
+
+                      // Direct High-Speed Streaming Upload -> Saves directly to Phone Downloads/DropPulse!
+                      server.createContext("/upload", exchange -> {
+                          addCors(exchange);
+                          if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
+                              exchange.sendResponseHeaders(204, -1);
+                              return;
+                          }
+                          String query = exchange.getRequestURI().getRawQuery();
+                          String fileName = "file_" + System.currentTimeMillis();
+                          if (query != null && query.startsWith("name=")) {
+                              fileName = URLDecoder.decode(query.substring(5), "UTF-8");
+                          }
+                          fileName = fileName.replaceAll("[^a-zA-Z0-9._\\- ]", "_");
+                          File outFile = new File(shareDir, fileName);
+                          try (InputStream is = exchange.getRequestBody();
+                               FileOutputStream fos = new FileOutputStream(outFile)) {
+                              byte[] buf = new byte[65536];
+                              int len;
+                              while ((len = is.read(buf)) != -1) {
+                                  fos.write(buf, 0, len);
+                              }
+                          }
+                          byte[] resp = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+                          exchange.getResponseHeaders().set("Content-Type", "application/json");
+                          exchange.sendResponseHeaders(200, resp.length);
+                          try (OutputStream os = exchange.getResponseBody()) { os.write(resp); }
+                      });
+
+                      // List Shared Files
+                      server.createContext("/list", exchange -> {
+                          addCors(exchange);
+                          File[] files = shareDir.listFiles();
+                          StringBuilder json = new StringBuilder("[");
+                          if (files != null) {
+                              Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+                              boolean first = true;
+                              for (File f : files) {
+                                  if (!f.isFile()) continue;
+                                  if (!first) json.append(",");
+                                  first = false;
+                                  json.append("{\"name\":\"").append(f.getName().replace("\"", "\\\""))
+                                      .append("\",\"size\":").append(f.length()).append("}");
+                              }
+                          }
+                          json.append("]");
+                          byte[] resp = json.toString().getBytes(StandardCharsets.UTF_8);
+                          exchange.getResponseHeaders().set("Content-Type", "application/json");
+                          exchange.sendResponseHeaders(200, resp.length);
+                          try (OutputStream os = exchange.getResponseBody()) { os.write(resp); }
+                      });
+
+                      // Stream File Download / Video Playback
+                      server.createContext("/files/", exchange -> {
+                          addCors(exchange);
+                          String rawPath = exchange.getRequestURI().getRawPath();
+                          String name = URLDecoder.decode(rawPath.substring("/files/".length()), "UTF-8");
+                          File target = new File(shareDir, name);
+                          if (!target.exists()) {
+                              exchange.sendResponseHeaders(404, -1);
+                              return;
+                          }
+                          String query = exchange.getRequestURI().getRawQuery();
+                          if (query != null && query.contains("download=1")) {
+                              exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + target.getName() + "\"");
+                          }
+                          exchange.getResponseHeaders().set("Content-Type", guessMime(target.getName()));
+                          exchange.sendResponseHeaders(200, target.length());
+                          try (FileInputStream fis = new FileInputStream(target);
+                               OutputStream os = exchange.getResponseBody()) {
+                              byte[] buf = new byte[65536];
+                              int len;
+                              while ((len = fis.read(buf)) != -1) {
+                                  os.write(buf, 0, len);
+                              }
+                          }
+                      });
+
+                      server.start();
+                  } catch (Exception e) {
+                      e.printStackTrace();
+                  }
+              }
+
+              public String getLocalIpUrl() {
+                  try {
+                      Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+                      String fallback = null;
+                      while (interfaces.hasMoreElements()) {
+                          NetworkInterface ni = interfaces.nextElement();
+                          if (!ni.isUp() || ni.isLoopback()) continue;
+                          Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                          while (addrs.hasMoreElements()) {
+                              InetAddress addr = addrs.nextElement();
+                              if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
+                                  String ip = addr.getHostAddress();
+                                  if (ip.startsWith("192.168.")) return "http://" + ip + ":" + PORT;
+                                  fallback = "http://" + ip + ":" + PORT;
+                              }
+                          }
+                      }
+                      if (fallback != null) return fallback;
+                  } catch (Exception ignored) {}
+                  return "http://192.168.43.1:" + PORT;
+              }
+
+              private void addCors(HttpExchange ex) {
+                  ex.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+                  ex.getResponseHeaders().set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                  ex.getResponseHeaders().set("Access-Control-Allow-Headers", "*");
+              }
+
+              private byte[] readAll(InputStream is) throws IOException {
+                  ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                  byte[] buf = new byte[8192];
+                  int n;
+                  while ((n = is.read(buf)) != -1) bos.write(buf, 0, n);
+                  return bos.toByteArray();
+              }
+
+              private String guessMime(String name) {
+                  String lower = name.toLowerCase();
+                  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+                  if (lower.endsWith(".png")) return "image/png";
+                  if (lower.endsWith(".webp")) return "image/webp";
+                  if (lower.endsWith(".mp4")) return "video/mp4";
+                  if (lower.endsWith(".apk")) return "application/vnd.android.package-archive";
+                  return "application/octet-stream";
+              }
+          }
+          EOF
+
+          # 4. Update MainActivity.java to start LocalDropServer, provide Offline QR SVG & Grant Camera
+          cat << 'EOF' > "$PKG_DIR/MainActivity.java"
+          package com.droppulse.proshare;
+
+          import android.Manifest;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.JavascriptInterface;
+          import android.webkit.PermissionRequest;
+          import android.webkit.WebChromeClient;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+          import com.getcapacitor.BridgeActivity;
+          import com.google.zxing.BarcodeFormat;
+          import com.google.zxing.common.BitMatrix;
+          import com.google.zxing.qrcode.QRCodeWriter;
+
+          public class MainActivity extends BridgeActivity {
+              private LocalDropServer dropServer;
+
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  dropServer = new LocalDropServer(this);
+                  dropServer.start();
+
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, new String[]{
+                          Manifest.permission.CAMERA,
+                          Manifest.permission.READ_EXTERNAL_STORAGE,
+                          Manifest.permission.WRITE_EXTERNAL_STORAGE
+                      }, 101);
+                  }
+              }
+
+              @Override
+              public void onStart() {
+                  super.onStart();
+                  if (this.bridge != null && this.bridge.getWebView() != null) {
+                      this.bridge.getWebView().getSettings().setUserAgentString(
+                          this.bridge.getWebView().getSettings().getUserAgentString() + " DropPulseApp"
+                      );
+                      this.bridge.getWebView().addJavascriptInterface(new Object() {
+                          @JavascriptInterface
+                          public String getServerUrl() {
+                              return dropServer.getLocalIpUrl();
+                          }
+
+                          @JavascriptInterface
+                          public String getQrSvg(String text) {
+                              try {
+                                  BitMatrix m = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 220, 220);
+                                  StringBuilder sb = new StringBuilder("<svg width='180' height='180' viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'><rect width='220' height='220' fill='#ffffff'/>");
+                                  for (int y = 0; y < m.getHeight(); y++) {
+                                      for (int x = 0; x < m.getWidth(); x++) {
+                                          if (m.get(x, y)) sb.append("<rect x='").append(x).append("' y='").append(y).append("' width='1' height='1' fill='#000000'/>");
+                                      }
+                                  }
+                                  return sb.append("</svg>").toString();
+                              } catch (Exception e) {
+                                  return "";
+                              }
+                          }
+                      }, "AndroidServer");
+
+                      this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+                          @Override
+                          public void onPermissionRequest(final PermissionRequest request) {
+                              runOnUiThread(() -> request.grant(request.getResources()));
+                          }
+                      });
+                  }
+              }
+          }
+          EOF
+
+          # 5. Permissions
+          sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" \/>\n    <application android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"/' android/app/src/main/AndroidManifest.xml
 
           cd android
           chmod +x gradlew
