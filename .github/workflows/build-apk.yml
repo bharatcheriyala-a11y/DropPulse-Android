@@ -14,18 +14,32 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build Native Android APK
+      - name: Setup & Build Android APK
         run: |
-          npm install
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
           mkdir -p www
-          cp index.html www/index.html
-          npx cap init "DropPulse PRO" "com.droppulse.proshare" --web-dir www
+          if [ -f index.html ]; then cp index.html www/index.html; else echo "<h1>DropPulse PRO</h1>" > www/index.html; fi
+
+          cat << 'EOF' > capacitor.config.json
+          {
+            "appId": "com.droppulse.proshare",
+            "appName": "DropPulse PRO",
+            "webDir": "www",
+            "server": {
+              "androidScheme": "https"
+            }
+          }
+          EOF
+
           npx cap add android
 
-          # Camera & Storage Permissions for all Android devices
+          # Add Camera, Storage & Network Permissions
           sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" \/>\n    <application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
-          cd android && chmod +x gradlew && ./gradlew assembleDebug
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload Official APK
         uses: actions/upload-artifact@v4
