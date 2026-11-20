@@ -41,7 +41,10 @@ jobs:
 
           yes | npx cap add android
 
-          # 1. Generate 512x512 Custom DropPulse PRO Launcher Icon
+          # 1. Remove Default Adaptive Icon XMLs
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+
+          # 2. Generate 512x512 Custom Icon & Overwrite ALL Splash Screens
           cat << 'EOF' > make-icon.js
           const sharp = require('sharp');
           const fs = require('fs');
@@ -79,14 +82,22 @@ jobs:
                 await sharp(Buffer.from(svg)).resize(size, size).png().toFile(`${dir}/ic_launcher_foreground.png`);
               }
             }
+            // Overwrite default Capacitor splash.png files
+            const resDir = 'android/app/src/main/res';
+            for (const sub of fs.readdirSync(resDir)) {
+              const splashPath = `${resDir}/${sub}/splash.png`;
+              if (fs.existsSync(splashPath)) {
+                await sharp(Buffer.from(svg)).resize(512, 512).png().toFile(splashPath);
+              }
+            }
           })();
           EOF
           node make-icon.js
 
-          # 2. Add NanoHTTPD (Android Local Server) & ZXing Core (Offline QR)
+          # 3. Add NanoHTTPD & ZXing Core
           sed -i 's/dependencies {/dependencies {\n    implementation "org.nanohttpd:nanohttpd:2.3.1"\n    implementation "com.google.zxing:core:3.5.3"/' android/app/build.gradle
 
-          # 3. Create Android-Native High-Speed Local HTTP Server (LocalDropServer.java)
+          # 4. Create LocalDropServer.java
           PKG_DIR=$(dirname $(find android/app/src/main/java -name "MainActivity.java"))
           cat << 'EOF' > "$PKG_DIR/LocalDropServer.java"
           package com.droppulse.proshare;
@@ -121,7 +132,6 @@ jobs:
                   }
 
                   try {
-                      // 1. Upload endpoint (streams directly to Phone Downloads/DropPulse)
                       if ("/upload".equals(uri) && Method.POST.equals(method)) {
                           Map<String, String> params = session.getParms();
                           String rawName = params.get("name");
@@ -147,7 +157,6 @@ jobs:
                           return withCors(newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true}"));
                       }
 
-                      // 2. List shared files
                       if ("/list".equals(uri)) {
                           File[] files = shareDir.listFiles();
                           StringBuilder json = new StringBuilder("[");
@@ -166,7 +175,6 @@ jobs:
                           return withCors(newFixedLengthResponse(Response.Status.OK, "application/json", json.toString()));
                       }
 
-                      // 3. Download / Stream file
                       if (uri.startsWith("/files/")) {
                           String name = URLDecoder.decode(uri.substring("/files/".length()), "UTF-8");
                           File target = new File(shareDir, name);
@@ -175,14 +183,9 @@ jobs:
                           }
                           FileInputStream fis = new FileInputStream(target);
                           Response res = newFixedLengthResponse(Response.Status.OK, guessMime(target.getName()), fis, target.length());
-                          Map<String, String> params = session.getParms();
-                          if ("1".equals(params.get("download"))) {
-                              res.addHeader("Content-Disposition", "attachment; filename=\"" + target.getName() + "\"");
-                          }
                           return withCors(res);
                       }
 
-                      // 4. Serve Web App UI to Laptop / 2nd Phone
                       InputStream htmlStream = context.getAssets().open("public/index.html");
                       return withCors(newChunkedResponse(Response.Status.OK, "text/html; charset=UTF-8", htmlStream));
 
@@ -232,22 +235,30 @@ jobs:
           }
           EOF
 
-          # 4. Update MainActivity.java
+          # 5. Update MainActivity.java with Native In-App File Downloader (No External Browser!)
           cat << 'EOF' > "$PKG_DIR/MainActivity.java"
           package com.droppulse.proshare;
 
           import android.Manifest;
           import android.content.pm.PackageManager;
+          import android.media.MediaScannerConnection;
           import android.os.Bundle;
+          import android.os.Environment;
           import android.webkit.JavascriptInterface;
           import android.webkit.PermissionRequest;
           import android.webkit.WebChromeClient;
+          import android.widget.Toast;
           import androidx.core.app.ActivityCompat;
           import androidx.core.content.ContextCompat;
           import com.getcapacitor.BridgeActivity;
           import com.google.zxing.BarcodeFormat;
           import com.google.zxing.common.BitMatrix;
           import com.google.zxing.qrcode.QRCodeWriter;
+          import java.io.File;
+          import java.io.FileOutputStream;
+          import java.io.InputStream;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
 
           public class MainActivity extends BridgeActivity {
               private LocalDropServer dropServer;
@@ -275,9 +286,6 @@ jobs:
               public void onStart() {
                   super.onStart();
                   if (this.bridge != null && this.bridge.getWebView() != null) {
-                      this.bridge.getWebView().getSettings().setUserAgentString(
-                          this.bridge.getWebView().getSettings().getUserAgentString() + " DropPulseApp"
-                      );
                       this.bridge.getWebView().addJavascriptInterface(new Object() {
                           @JavascriptInterface
                           public String getServerUrl() {
@@ -285,10 +293,35 @@ jobs:
                           }
 
                           @JavascriptInterface
+                          public void downloadToPhone(String fileUrl, String fileName) {
+                              new Thread(() -> {
+                                  try {
+                                      URL url = new URL(fileUrl);
+                                      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                                      conn.connect();
+                                      File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                                      File dir = new File(downloads, "DropPulse");
+                                      if (!dir.exists()) dir.mkdirs();
+                                      File outFile = new File(dir, fileName);
+                                      try (InputStream is = conn.getInputStream();
+                                           FileOutputStream fos = new FileOutputStream(outFile)) {
+                                          byte[] buf = new byte[65536];
+                                          int len;
+                                          while ((len = is.read(buf)) != -1) fos.write(buf, 0, len);
+                                      }
+                                      MediaScannerConnection.scanFile(MainActivity.this, new String[]{outFile.getAbsolutePath()}, null, null);
+                                      runOnUiThread(() -> Toast.makeText(MainActivity.this, "Saved to Downloads/DropPulse/" + fileName, Toast.LENGTH_LONG).show());
+                                  } catch (Exception e) {
+                                      runOnUiThread(() -> Toast.makeText(MainActivity.this, "Save failed: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                                  }
+                              }).start();
+                          }
+
+                          @JavascriptInterface
                           public String getQrSvg(String text) {
                               try {
                                   BitMatrix m = new QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 220, 220);
-                                  StringBuilder sb = new StringBuilder("<svg width='180' height='180' viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'><rect width='220' height='220' fill='#ffffff'/>");
+                                  StringBuilder sb = new StringBuilder("<svg width='170' height='170' viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'><rect width='220' height='220' fill='#ffffff'/>");
                                   for (int y = 0; y < m.getHeight(); y++) {
                                       for (int x = 0; x < m.getWidth(); x++) {
                                           if (m.get(x, y)) sb.append("<rect x='").append(x).append("' y='").append(y).append("' width='1' height='1' fill='#000000'/>");
@@ -312,15 +345,16 @@ jobs:
           }
           EOF
 
-          # 5. Permissions
+          # 6. Permissions
           sed -i 's/<application/<uses-permission android:name="android.permission.CAMERA" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" \/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" \/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" \/>\n    <application android:usesCleartextTraffic="true" android:requestLegacyExternalStorage="true"/' android/app/src/main/AndroidManifest.xml
 
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../DropPulse-PRO.apk
 
       - name: Upload Official APK
         uses: actions/upload-artifact@v4
         with:
-          name: DropPulse-PRO-Official
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: DropPulse-PRO-v3
+          path: DropPulse-PRO.apk
