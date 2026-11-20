@@ -3,143 +3,110 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>DropPulse PRO - Offline High-Speed Share</title>
+  <title>DropPulse PRO - 100% Offline Share</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body {
-      background: #060b16;
-      color: #f8fafc;
+      background: #060b16; color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      min-height: 100vh; display: flex; flex-direction: column;
     }
-    /* Splash Screen */
     #splash {
       position: fixed; inset: 0; z-index: 999;
       background: radial-gradient(circle at center, #111c38 0%, #060b16 100%);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.35s ease;
     }
-    .pulse-ring {
-      width: 104px; height: 104px; border-radius: 26px;
-      box-shadow: 0 0 35px rgba(56, 189, 248, 0.55);
-      animation: pop 1.6s infinite ease-in-out;
-    }
-    @keyframes pop { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
-
-    /* Header */
     header {
-      background: rgba(15, 23, 42, 0.92);
-      border-bottom: 1px solid rgba(56, 189, 248, 0.2);
-      padding: 14px 18px;
-      display: flex; align-items: center; justify-content: space-between;
+      background: #0f172a; border-bottom: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
       position: sticky; top: 0; z-index: 20;
     }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .brand h1 { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand h1 { font-size: 18px; font-weight: 800; }
     .badge-pro {
       background: linear-gradient(135deg, #0284c7, #7c3aed);
       font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px;
     }
     .status-pill {
-      font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 99px;
+      font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 99px;
       background: rgba(16, 185, 129, 0.15); color: #34d399;
       border: 1px solid rgba(16, 185, 129, 0.35);
-      display: flex; align-items: center; gap: 6px;
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
 
-    /* Layout */
-    main {
-      max-width: 960px; width: 100%; margin: 0 auto; padding: 16px;
-      display: grid; grid-template-columns: 1fr; gap: 16px;
+    main { max-width: 640px; width: 100%; margin: 0 auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* Top Big SEND & RECEIVE Buttons (SHAREit Style) */
+    .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .big-btn {
+      border: none; border-radius: 20px; padding: 20px 12px; color: #fff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+      font-size: 16px; font-weight: 800; cursor: pointer; box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+      transition: transform 0.12s;
     }
-    @media (min-width: 768px) { main { grid-template-columns: 5fr 7fr; } }
+    .big-btn:active { transform: scale(0.96); }
+    .btn-send { background: linear-gradient(135deg, #2563eb, #4f46e5); border: 1px solid #60a5fa; }
+    .btn-recv { background: linear-gradient(135deg, #059669, #0d9488); border: 1px solid #34d399; }
+    .big-icon {
+      width: 48px; height: 48px; border-radius: 14px; background: rgba(255,255,255,0.18);
+      display: flex; align-items: center; justify-content: center;
+    }
 
     .card {
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(148, 163, 184, 0.16);
-      border-radius: 20px; padding: 18px;
+      background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 18px; padding: 14px;
     }
     .sec-title {
       font-size: 11px; font-weight: 800; text-transform: uppercase;
-      letter-spacing: 1px; color: #38bdf8; margin-bottom: 12px;
-      display: flex; justify-content: space-between;
+      letter-spacing: 0.8px; color: #38bdf8; margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center;
     }
 
-    /* Connection Box */
-    .ip-box {
-      background: #020617; border: 1px solid #1e293b; border-radius: 14px;
-      padding: 14px; text-align: center; margin-bottom: 12px;
+    /* QR & Scan Panel */
+    .qr-panel { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+    .qr-wrap { background: #fff; padding: 8px; border-radius: 12px; display: inline-block; }
+    .ip-text { font-family: monospace; font-size: 14px; font-weight: 800; color: #38bdf8; }
+    .sub-btn {
+      width: 100%; padding: 11px; border-radius: 12px; border: 1px solid #334155;
+      background: #1e293b; color: #f8fafc; font-size: 13px; font-weight: 700; cursor: pointer;
     }
-    .ip-url {
-      font-family: monospace; font-size: 16px; font-weight: 800;
-      color: #38bdf8; word-break: break-all; margin: 6px 0;
-    }
-    .qr-wrap {
-      background: #fff; padding: 10px; border-radius: 14px;
-      display: inline-block; margin: 8px auto;
-    }
-    .btn {
-      width: 100%; padding: 12px; border: none; border-radius: 12px;
-      font-size: 14px; font-weight: 700; cursor: pointer; color: #fff;
-      background: linear-gradient(135deg, #2563eb, #4f46e5);
-      transition: transform 0.1s;
-    }
-    .btn:active { transform: scale(0.98); }
-    .btn-green { background: linear-gradient(135deg, #059669, #10b981); }
-    .btn-dark { background: #1e293b; border: 1px solid #334155; margin-top: 8px; }
+    .sub-btn-blue { background: #1d4ed8; border-color: #3b82f6; }
 
-    /* Dropzone */
-    .dropzone {
-      border: 2px dashed rgba(56, 189, 248, 0.45);
-      border-radius: 18px; padding: 28px 16px; text-align: center;
-      background: rgba(30, 41, 59, 0.4); cursor: pointer;
-    }
-    .dropzone:active { background: rgba(56, 189, 248, 0.12); }
-    .up-icon {
-      width: 52px; height: 52px; border-radius: 50%;
-      background: rgba(56, 189, 248, 0.18); color: #38bdf8;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px; margin: 0 auto 10px;
-    }
+    #scanner-box { display: none; width: 100%; margin-top: 8px; }
+    #cam-video { width: 100%; border-radius: 12px; background: #000; max-height: 210px; object-fit: cover; }
 
     /* Progress */
-    .prog-box { margin-top: 12px; display: none; }
-    .prog-track { width: 100%; height: 10px; background: #0f172a; border-radius: 99px; overflow: hidden; margin-top: 6px; }
-    .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.1s; }
+    .prog-box { display: none; background: #020617; padding: 12px; border-radius: 14px; border: 1px solid #1e293b; }
+    .prog-track { width: 100%; height: 9px; background: #1e293b; border-radius: 99px; overflow: hidden; margin-top: 6px; }
+    .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #38bdf8, #10b981); }
 
-    /* File List */
+    /* File Items */
     .file-item {
       background: #020617; border: 1px solid #1e293b; border-radius: 14px;
-      padding: 12px; margin-top: 10px;
+      padding: 10px 12px; margin-top: 8px;
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
     }
     .file-meta { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .thumb { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; background: #1e293b; flex-shrink: 0; }
+    .thumb { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; background: #1e293b; flex-shrink: 0; }
     .fname { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .fsize { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-    .dl-btn {
+    .save-btn {
       padding: 8px 14px; border-radius: 10px; border: none;
       background: #10b981; color: #fff; font-size: 12px; font-weight: 800;
-      text-decoration: none; flex-shrink: 0; cursor: pointer;
+      cursor: pointer; flex-shrink: 0;
     }
-    video { max-width: 100%; border-radius: 10px; margin-top: 8px; }
-    .helper-box {
-      font-size: 12px; color: #cbd5e1; line-height: 1.5;
-      background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2);
-      padding: 10px 12px; border-radius: 12px; margin-top: 12px;
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #10b981; color: #fff; padding: 10px 18px; border-radius: 99px;
+      font-size: 13px; font-weight: 700; z-index: 999; display: none; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
     }
-    #scanner-box { display: none; margin-top: 10px; text-align: center; }
-    #cam-video { width: 100%; border-radius: 12px; background: #000; max-height: 220px; object-fit: cover; }
   </style>
 </head>
 <body>
 
-  <!-- 100% Offline Brand Splash -->
+  <!-- Instant Offline Brand Splash -->
   <div id="splash">
-    <svg class="pulse-ring" viewBox="0 0 512 512" fill="none">
+    <svg width="96" height="96" viewBox="0 0 512 512" fill="none">
       <rect width="512" height="512" rx="115" fill="#0F172A"/>
       <rect x="14" y="14" width="484" height="484" rx="102" stroke="#38BDF8" stroke-width="10"/>
       <circle cx="170" cy="256" r="48" fill="#38BDF8"/>
@@ -147,16 +114,13 @@
       <path d="M215 282L315 364L298 390L395 368L362 280L345 306L235 252Z" fill="#A855F7"/>
       <path d="M248 256H315L334 212L358 300L380 230L398 256H450" stroke="#7DD3FC" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <div style="margin-top:16px; display:flex; align-items:center; gap:8px;">
-      <span style="font-size:24px; font-weight:900;">DropPulse</span>
-      <span class="badge-pro" style="font-size:12px;">PRO</span>
-    </div>
-    <p style="font-size:12px; color:#94a3b8; margin-top:4px;">100% Offline Local Wi-Fi Engine</p>
+    <div style="margin-top:14px; font-size:22px; font-weight:900;">DropPulse <span class="badge-pro">PRO</span></div>
+    <p style="font-size:12px; color:#94a3b8; margin-top:4px;">100% Offline Local Engine</p>
   </div>
 
   <header>
     <div class="brand">
-      <svg width="38" height="38" viewBox="0 0 512 512" fill="none">
+      <svg width="34" height="34" viewBox="0 0 512 512" fill="none">
         <rect width="512" height="512" rx="115" fill="#1E1B4B"/>
         <circle cx="170" cy="256" r="48" fill="#38BDF8"/>
         <path d="M215 230L315 148L298 122L395 144L362 232L345 206L235 260Z" fill="#60A5FA"/>
@@ -167,93 +131,109 @@
           <h1>DropPulse</h1>
           <span class="badge-pro">PRO</span>
         </div>
-        <p style="font-size:11px; color:#94a3b8;" id="mode-label">Offline Local Hotspot Mode</p>
+        <p style="font-size:10px; color:#94a3b8;">Zero-Internet Local Share</p>
       </div>
     </div>
-    <div class="status-pill"><span class="dot"></span><span id="conn-status">Active</span></div>
+    <div class="status-pill" id="conn-status">● Offline Ready</div>
   </header>
 
   <main>
-    <!-- Left Card: Offline Hotspot & QR Pairing -->
+    <!-- 1. TOP SEND & RECEIVE BUTTONS -->
+    <div class="action-grid">
+      <button class="big-btn btn-send" onclick="document.getElementById('picker').click()">
+        <div class="big-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <span>SEND</span>
+      </button>
+
+      <button class="big-btn btn-recv" onclick="openReceiveMode()">
+        <div class="big-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <span>RECEIVE</span>
+      </button>
+    </div>
+
+    <input type="file" id="picker" multiple style="display:none" onchange="uploadFiles(this.files)" />
+
+    <!-- Progress Bar -->
+    <div class="prog-box" id="prog-box">
+      <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
+        <span id="prog-name">Transferring...</span>
+        <span id="prog-pct" style="color:#38bdf8;">0%</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+    </div>
+
+    <!-- 2. QR & SCAN CONNECTION BOX -->
     <section class="card">
       <div class="sec-title">
-        <span>1. Zero-Internet Connection</span>
+        <span>Connect Devices (No Internet)</span>
         <span id="role-badge">Host</span>
       </div>
 
-      <div class="ip-box">
-        <p style="font-size:11px; color:#94a3b8;">Open this exact address on Laptop or 2nd Phone:</p>
-        <div class="ip-url" id="server-url">Detecting Local IP...</div>
+      <div class="qr-panel">
         <div class="qr-wrap" id="qr-container"></div>
-        <button class="btn" onclick="copyUrl()">Copy Address</button>
-        <button class="btn btn-dark" onclick="toggleQrScanner()">📷 Scan QR with Camera</button>
-      </div>
+        <div class="ip-text" id="server-url">http://192.168.43.1:8080</div>
+        <p style="font-size:11px; color:#94a3b8;">1. Turn ON Hotspot on Phone 1 & connect Phone 2 / Laptop.<br>2. On Phone 2 tap <b>Scan QR</b> below (or open link in Laptop).</p>
 
-      <div id="scanner-box">
-        <video id="cam-video" playsinline></video>
-        <p style="font-size:11px; color:#38bdf8; margin:6px 0;" id="scan-hint">Point camera at Host QR code...</p>
-        <button class="btn btn-dark" onclick="stopQrScanner()">Close Camera</button>
-      </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; width:100%; margin-top:4px;">
+          <button class="sub-btn sub-btn-blue" onclick="toggleQrScanner()">📷 Scan QR</button>
+          <button class="sub-btn" onclick="refreshServerInfo()">🔄 Refresh IP</button>
+        </div>
 
-      <div class="helper-box">
-        <b>⚡ Fast Offline Steps (No Internet Needed):</b><br>
-        1. Turn ON <b>Mobile Hotspot</b> on this phone & connect your Laptop/2nd Phone to it.<br>
-        2. Tap <b>Refresh IP</b> below—open the blue link on Laptop browser (or scan QR).<br>
-        3. Files transfer at full Wi-Fi speed (50+ MB/s)!
-        <button class="btn btn-dark" style="margin-top:8px;" onclick="refreshServerInfo()">🔄 Refresh Local IP</button>
+        <div id="scanner-box">
+          <video id="cam-video" playsinline></video>
+          <p style="font-size:11px; color:#38bdf8; margin:6px 0;" id="scan-hint">Point camera at QR code...</p>
+          <button class="sub-btn" onclick="stopQrScanner()">Close Camera</button>
+        </div>
       </div>
     </section>
 
-    <!-- Right Card: Instant File Transfer -->
+    <!-- 3. SHARED FILES LIST -->
     <section class="card">
       <div class="sec-title">
-        <span>2. Instant File Transfer</span>
+        <span>Shared Files (Auto-Synced)</span>
         <span id="file-counter">0 Files</span>
       </div>
-
-      <div class="dropzone" onclick="document.getElementById('picker').click()">
-        <input type="file" id="picker" multiple style="display:none" onchange="uploadFiles(this.files)" />
-        <div class="up-icon">⚡</div>
-        <div style="font-size:16px; font-weight:800; margin-bottom:4px;">Tap to Send Photos, Videos & APKs</div>
-        <div style="font-size:12px; color:#94a3b8;">Direct Local Wi-Fi Transfer • Zero Data Loss • Instant Preview</div>
-      </div>
-
-      <div class="prog-box" id="prog-box">
-        <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700;">
-          <span id="prog-name">Sending...</span>
-          <span id="prog-pct" style="color:#38bdf8;">0%</span>
-        </div>
-        <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
-      </div>
-
-      <div id="files-list" style="margin-top:14px;">
-        <p id="empty-note" style="text-align:center; color:#64748b; font-size:12px; padding:30px 0;">
-          Connected devices see all shared files here immediately.
+      <div id="files-list">
+        <p style="text-align:center; color:#64748b; font-size:12px; padding:20px 0;">
+          Files sent from either device appear here instantly.
         </p>
       </div>
     </section>
   </main>
 
+  <div class="toast" id="toast">Saved to Phone Downloads/DropPulse!</div>
+
   <script>
-    // Dismiss splash smoothly
     window.addEventListener('load', () => {
       setTimeout(() => {
         const s = document.getElementById('splash');
-        if (s) { s.style.opacity = '0'; setTimeout(() => s.remove(), 400); }
-      }, 650);
+        if (s) { s.style.opacity = '0'; setTimeout(() => s.remove(), 350); }
+      }, 500);
     });
 
-    // Determine Base API URL (Native Android Local Server on port 8080 or current browser host)
-    let baseUrl = '';
-    const isNativeApp = !!(window.AndroidServer || navigator.userAgent.includes('DropPulseApp'));
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2800);
+    }
+
+    // Determine active host URL (supports Host APK, Client APK after QR scan, and Laptop Browser)
+    let baseUrl = localStorage.getItem('dp_target_host') || '';
 
     function initConnection() {
-      if (window.AndroidServer && typeof window.AndroidServer.getServerUrl === 'function') {
-        baseUrl = window.AndroidServer.getServerUrl();
-        document.getElementById('role-badge').textContent = '📱 Mobile Host';
-      } else if (location.protocol.startsWith('http') && location.hostname !== 'localhost') {
+      if (location.protocol === 'http:' && location.hostname && location.hostname !== 'localhost') {
         baseUrl = location.origin;
-        document.getElementById('role-badge').textContent = '💻 Connected Client';
+        localStorage.setItem('dp_target_host', baseUrl);
+        document.getElementById('role-badge').textContent = 'Connected Client';
+      } else if (window.AndroidServer && typeof window.AndroidServer.getServerUrl === 'function') {
+        const myUrl = window.AndroidServer.getServerUrl();
+        if (!baseUrl) baseUrl = myUrl;
+        document.getElementById('role-badge').textContent = baseUrl === myUrl ? 'Host Device' : 'Linked to Host';
       } else {
         baseUrl = 'http://192.168.43.1:8080';
       }
@@ -262,42 +242,34 @@
     }
 
     function refreshServerInfo() {
+      localStorage.removeItem('dp_target_host');
       if (window.AndroidServer && typeof window.AndroidServer.getServerUrl === 'function') {
         baseUrl = window.AndroidServer.getServerUrl();
+        document.getElementById('role-badge').textContent = 'Host Device';
         updateUrlUI(baseUrl);
+        showToast('IP Refreshed: ' + baseUrl);
       } else {
         location.reload();
       }
     }
 
+    function openReceiveMode() {
+      refreshServerInfo();
+      document.getElementById('qr-container').scrollIntoView({ behavior: 'smooth' });
+    }
+
     function updateUrlUI(url) {
       document.getElementById('server-url').textContent = url;
-      renderPureOfflineQR(url);
-    }
-
-    // 100% Offline Pure Canvas QR Code Matrix Generator (No external library needed!)
-    function renderPureOfflineQR(text) {
       const box = document.getElementById('qr-container');
       box.innerHTML = '';
-      // Generate crisp QR via local native helper if available, else clean matrix SVG
       if (window.AndroidServer && typeof window.AndroidServer.getQrSvg === 'function') {
-        box.innerHTML = window.AndroidServer.getQrSvg(text);
-        return;
+        box.innerHTML = window.AndroidServer.getQrSvg(url);
+      } else {
+        box.innerHTML = `<div style="padding:8px 12px; color:#0f172a; font-family:monospace; font-weight:900;">${url}</div>`;
       }
-      // Fallback visual code badge when opened in browser
-      const div = document.createElement('div');
-      div.style.cssText = 'padding:10px 14px; color:#0f172a; font-family:monospace; font-weight:900; font-size:14px;';
-      div.textContent = text.replace('http://', '');
-      box.appendChild(div);
     }
 
-    function copyUrl() {
-      const url = document.getElementById('server-url').textContent;
-      if (navigator.clipboard) navigator.clipboard.writeText(url);
-      alert('Copied: ' + url);
-    }
-
-    // Native BarcodeDetector QR Scanner (100% Offline, built into Android Chrome/WebView!)
+    // Native QR Scanner (Stays inside App - NEVER opens external browser!)
     let camStream = null;
     async function toggleQrScanner() {
       const box = document.getElementById('scanner-box');
@@ -315,10 +287,15 @@
             try {
               const codes = await detector.detect(video);
               if (codes.length > 0) {
-                const targetUrl = codes[0].rawValue;
+                const scannedUrl = codes[0].rawValue.trim();
                 stopQrScanner();
-                if (targetUrl.startsWith('http')) {
-                  window.location.href = targetUrl;
+                if (scannedUrl.startsWith('http')) {
+                  baseUrl = scannedUrl;
+                  localStorage.setItem('dp_target_host', baseUrl);
+                  document.getElementById('role-badge').textContent = 'Linked to Host';
+                  updateUrlUI(baseUrl);
+                  showToast('Connected to ' + baseUrl);
+                  fetchFileList();
                 }
                 return;
               }
@@ -327,10 +304,10 @@
           };
           scanLoop();
         } else {
-          document.getElementById('scan-hint').textContent = 'Enter the IP address shown on Host screen into your browser.';
+          document.getElementById('scan-hint').textContent = 'Camera active. Make sure Hotspot is connected.';
         }
       } catch (err) {
-        alert('Allow Camera permission in App Settings to scan QR.');
+        alert('Allow Camera permission in App Settings.');
         box.style.display = 'none';
       }
     }
@@ -343,7 +320,7 @@
       document.getElementById('scanner-box').style.display = 'none';
     }
 
-    // Direct High-Speed HTTP Binary Streaming Upload (50+ MB/s on local Wi-Fi!)
+    // Direct Offline Binary Upload (Works from BOTH Host and Client!)
     async function uploadFiles(fileList) {
       const files = Array.from(fileList);
       if (!files.length) return;
@@ -359,7 +336,7 @@
         progPct.textContent = '0%';
         progFill.style.width = '0%';
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
           const xhr = new XMLHttpRequest();
           xhr.open('POST', baseUrl + '/upload?name=' + encodeURIComponent(file.name), true);
           xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
@@ -375,29 +352,52 @@
           xhr.onload = () => {
             progPct.textContent = '100%';
             progFill.style.width = '100%';
+            showToast('Sent: ' + file.name);
             fetchFileList();
             resolve();
           };
           xhr.onerror = () => {
-            alert('Transfer failed! Make sure both devices are on the same Hotspot/Wi-Fi.');
-            reject();
+            alert('Not connected! Connect Hotspot & Scan QR first.');
+            resolve();
           };
           xhr.send(file);
         });
       }
 
       document.getElementById('picker').value = '';
-      setTimeout(() => { progBox.style.display = 'none'; }, 1000);
+      setTimeout(() => { progBox.style.display = 'none'; }, 900);
     }
 
-    // Auto-Sync Shared Files across Mobile & Laptop every 1.5 seconds
+    // Native In-App File Save (NEVER opens Chrome Browser or triggers Network Error!)
+    async function saveFileLocally(fileUrl, fileName) {
+      try {
+        if (window.AndroidServer && typeof window.AndroidServer.downloadToPhone === 'function') {
+          showToast('Saving ' + fileName + '...');
+          window.AndroidServer.downloadToPhone(fileUrl, fileName);
+          return;
+        }
+        // Desktop / Browser Download
+        const res = await fetch(fileUrl);
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('Saved: ' + fileName);
+      } catch (e) {
+        alert('Save error: Ensure Hotspot is connected.');
+      }
+    }
+
     let lastHash = '';
     async function fetchFileList() {
       try {
         const res = await fetch(baseUrl + '/list', { cache: 'no-store' });
         if (!res.ok) return;
         const files = await res.json();
-        document.getElementById('conn-status').textContent = 'Connected';
+        document.getElementById('conn-status').textContent = '● Linked (Offline)';
 
         const hash = JSON.stringify(files);
         if (hash === lastHash) return;
@@ -405,54 +405,36 @@
 
         const container = document.getElementById('files-list');
         document.getElementById('file-counter').textContent = files.length + ' Files';
-
         if (!files.length) return;
         container.innerHTML = '';
 
         files.slice().reverse().forEach(f => {
           const fileUrl = baseUrl + '/files/' + encodeURIComponent(f.name);
           const isImg = /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name);
-          const isVid = /\.(mp4|webm|mkv|mov)$/i.test(f.name);
           const sizeStr = f.size > 1048576 ? (f.size / 1048576).toFixed(2) + ' MB' : (f.size / 1024).toFixed(1) + ' KB';
 
-          const card = document.createElement('div');
-          card.className = 'file-item';
-          card.style.flexDirection = 'column';
-          card.style.alignItems = 'stretch';
-
-          const topRow = document.createElement('div');
-          topRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px;';
+          const item = document.createElement('div');
+          item.className = 'file-item';
 
           const meta = document.createElement('div');
           meta.className = 'file-meta';
           if (isImg) {
-            meta.innerHTML = `<img src="${fileUrl}" class="thumb" /><div style="min-width:0"><div class="fname">${f.name}</div><div class="fsize">${sizeStr} • Instant Ready</div></div>`;
+            meta.innerHTML = `<img src="${fileUrl}" class="thumb" /><div style="min-width:0"><div class="fname">${f.name}</div><div class="fsize">${sizeStr}</div></div>`;
           } else {
-            meta.innerHTML = `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px;">${isVid ? '🎬' : '📄'}</div><div style="min-width:0"><div class="fname">${f.name}</div><div class="fsize">${sizeStr} • Instant Ready</div></div>`;
+            meta.innerHTML = `<div class="thumb" style="display:flex;align-items:center;justify-content:center;font-size:18px;">📄</div><div style="min-width:0"><div class="fname">${f.name}</div><div class="fsize">${sizeStr}</div></div>`;
           }
 
-          const dlBtn = document.createElement('a');
-          dlBtn.className = 'dl-btn';
-          dlBtn.href = fileUrl + '?download=1';
-          dlBtn.download = f.name;
-          dlBtn.textContent = 'Save / Open';
+          const btn = document.createElement('button');
+          btn.className = 'save-btn';
+          btn.textContent = 'Save';
+          btn.onclick = () => saveFileLocally(fileUrl, f.name);
 
-          topRow.appendChild(meta);
-          topRow.appendChild(dlBtn);
-          card.appendChild(topRow);
-
-          if (isVid) {
-            const vid = document.createElement('video');
-            vid.src = fileUrl;
-            vid.controls = true;
-            vid.preload = 'metadata';
-            card.appendChild(vid);
-          }
-
-          container.appendChild(card);
+          item.appendChild(meta);
+          item.appendChild(btn);
+          container.appendChild(item);
         });
       } catch (e) {
-        document.getElementById('conn-status').textContent = 'Waiting for Host...';
+        document.getElementById('conn-status').textContent = '● Waiting Hotspot';
       }
     }
 
